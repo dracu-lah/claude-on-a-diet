@@ -10,7 +10,8 @@ Works the same on Windows, macOS and Linux: everything runs through `node script
 
 ## 1. Check the machine (one call)
 
-Run `node scripts/setup.mjs status`. If `node` itself is missing, stop and give the install line for
+Run `node scripts/setup.mjs status` and `node scripts/setup.mjs mcp-list` (two parallel calls;
+mcp-list can take a minute while servers are health-checked). If `node` itself is missing, stop and give the install line for
 their OS: Windows `winget install OpenJS.NodeJS.LTS`, macOS `brew install node`, Fedora
 `sudo dnf install nodejs`, Debian/Ubuntu `sudo apt install nodejs npm`. Note what is missing
 (python3 → hooks are skipped; npx → third-party skills are skipped) and say so in the questions.
@@ -39,7 +40,8 @@ Then a second AskUserQuestion call (same round, do not wait for more input in be
 6. **MCP servers** (multiSelect): run `node scripts/setup.mjs mcp-list` first. Options = the
    servers found (max 4 per question, split if more), pre-describe the ones in
    `manifest/mcp.json` `keep` as "(recommended)". Everything not selected is turned off in every
-   project (a `permissions.deny` rule); say that in the question.
+   project (a `permissions.deny` rule); say that in the question. If they want MCPs left alone,
+   drop `--mcp` from the install flags instead.
 
 If the existing `~/.claude` has a `CLAUDE.md` or `settings.json`, say they will be backed up first
 (the script does it automatically into `~/.claude/backups/claude-on-a-diet-<time>/`).

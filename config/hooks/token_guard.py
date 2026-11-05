@@ -9,8 +9,9 @@ import json, os, re, sys
 
 READ_MAX_BYTES = 30_000
 WARN_CALLS, BLOCK_CALLS = 150, 400
-MODELS_MD = os.path.expanduser('~/.claude/models.md')
-SETTINGS = os.path.expanduser('~/.claude/settings.json')
+CLAUDE_DIR = os.environ.get('CLAUDE_CONFIG_DIR') or os.path.expanduser('~/.claude')
+MODELS_MD = os.path.join(CLAUDE_DIR, 'models.md')
+SETTINGS = os.path.join(CLAUDE_DIR, 'settings.json')
 SET_MODEL = re.compile(r'Set model to `?([^`<"\\]+)')
 SET_EFFORT = re.compile(r'[Ee]ffort(?: level)? (?:set )?to `?(low|medium|high|xhigh|max)')
 ALIASES = {'opus': 'claude-opus-5-5', 'sonnet': 'claude-sonnet-5-5', 'haiku': 'claude-haiku-5-5',

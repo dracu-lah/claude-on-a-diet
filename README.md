@@ -53,7 +53,8 @@ git pull, then start configuring again
 ```sh
 node scripts/setup.mjs status
 node scripts/setup.mjs install --all --dry-run   # see what it would do
-node scripts/setup.mjs install --all             # rules, hooks, settings, own skills, default skills, plugins
+node scripts/setup.mjs install --all             # rules, hooks, settings, own skills, default skills, plugins,
+                                                 # and MCP allowlist (servers not in manifest/mcp.json go off)
 node scripts/setup.mjs install --rules --skills=impeccable,wrangler
 node scripts/setup.mjs set DISPLAY_NAME="Your Name" GIT_AUTHOR=your-git-name   # fills {{PLACEHOLDERS}}
 node scripts/setup.mjs mcp-list                  # MCP servers found and whether they are on

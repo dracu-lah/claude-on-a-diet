@@ -77,15 +77,19 @@ function pythonCmd() {
 // ---------- backup ----------
 let BACKUP = null;
 const CREATED = new Set(); // paths this run adds; restore deletes them
+const BACKED = new Set(); // paths this run saved; restore puts back exactly these
 function backup(rel) {
+  rel = fwd(rel);
+  if (CREATED.has(rel) || BACKED.has(rel)) return; // first look wins: never back up our own output
   const src = path.join(CLAUDE, rel);
   if (!BACKUP) {
     BACKUP = path.join(CLAUDE, 'backups', `claude-on-a-diet-${new Date().toISOString().replace(/[:.]/g, '-')}`);
     log(`Backup: ${BACKUP}`);
   }
-  if (!exists(src)) { CREATED.add(fwd(rel)); return; }
+  if (!exists(src)) { CREATED.add(rel); return; }
+  BACKED.add(rel);
   const dst = path.join(BACKUP, rel);
-  if (exists(dst) || DRY) return;
+  if (DRY) return;
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.cpSync(src, dst, { recursive: true, dereference: true });
 }
@@ -154,7 +158,7 @@ function selectedSkills() {
 function installSkills(list) {
   if (!list.length) return;
   if (!has('npx')) return log('! npx not found: install Node.js (https://nodejs.org) to get third-party skills');
-  backup('skills');
+  for (const s of list) backup(path.join('skills', s.name));
   const failed = [];
   for (const s of list) if (run('npx', ['-y', 'skills', 'add', s.source, '-g', '-a', 'claude-code', '-s', s.name, '-y'])) failed.push(s.name);
   log(failed.length ? `! skills failed: ${failed.join(', ')}` : `+ ${list.length} skills installed`);
@@ -173,8 +177,9 @@ const isServerRule = (r) => r.startsWith('mcp__') && !r.slice(5).includes('__');
 function discoverMcp() {
   const names = new Set(BUILTIN_MCP);
   const r = spawnSync('claude', ['mcp', 'list'], { stdio: 'pipe', shell: WIN, timeout: 120000 });
-  for (const line of String(r.stdout || '').split('\n')) { const m = line.match(/^(\S[^:]*): .* - \S/); if (m) names.add(m[1].trim()); }
-  for (const n of readJson(path.join(HOME, '.claude.json')).claudeAiMcpEverConnected || []) names.add(n); // read only
+  for (const line of String(r.stdout || '').split('\n')) { const m = line.match(/^(\S.*?): .* - \S/); if (m) names.add(m[1].trim()); }
+  const cj = process.env.CLAUDE_CONFIG_DIR ? path.join(CLAUDE, '.claude.json') : path.join(HOME, '.claude.json');
+  for (const n of readJson(cj).claudeAiMcpEverConnected || []) names.add(n); // read only
   return [...names];
 }
 function mcpKeep() {
@@ -203,6 +208,7 @@ function installMcp() {
 // ---------- commands ----------
 function install() {
   log(`Claude config dir: ${CLAUDE}${DRY ? '  (dry run)' : ''}`);
+  if (!DRY && exists(path.join(REPO, '.git'))) spawnSync('git', ['-C', REPO, 'config', 'core.hooksPath', '.githooks'], { stdio: 'pipe', shell: WIN }); // privacy pre-commit check
   if (flag('rules')) place(path.join(CFG, 'CLAUDE.md'), 'CLAUDE.md');
   if (flag('hooks')) {
     place(path.join(CFG, 'models.md'), 'models.md');
@@ -214,16 +220,26 @@ function install() {
   if (flag('plugins')) installPlugins();
   if (flag('mcp')) installMcp(); // after plugins, so plugin MCPs are found
   if (MISSING.size) log(`\n! No value for: ${[...MISSING].join(', ')}. Run: node scripts/setup.mjs set ${[...MISSING].map((k) => `${k}=...`).join(' ')}  then install again`);
-  if (BACKUP && !DRY) { fs.mkdirSync(BACKUP, { recursive: true }); writeJson(path.join(BACKUP, '.created.json'), [...CREATED]); }
+  if (BACKUP && !DRY) { fs.mkdirSync(BACKUP, { recursive: true }); writeJson(path.join(BACKUP, '.created.json'), [...CREATED]); writeJson(path.join(BACKUP, '.backed-up.json'), [...BACKED]); }
   log(BACKUP ? `\nDone. Undo with: node scripts/setup.mjs restore "${BACKUP}"` : '\nDone, nothing changed.');
 }
 
 function restore() {
   const root = path.join(CLAUDE, 'backups');
   const dir = args[1] || (exists(root) ? fs.readdirSync(root).filter((d) => d.startsWith('claude-on-a-diet-')).sort().map((d) => path.join(root, d)).pop() : null);
-  if (!dir || !exists(dir)) return log('No claude-setup backup found.'), process.exit(1);
-  for (const rel of readJson(path.join(dir, '.created.json'), [])) { log(`- ${rel}`); if (!DRY) fs.rmSync(path.join(CLAUDE, rel), { recursive: true, force: true }); }
-  for (const rel of fs.readdirSync(dir).filter((f) => f !== '.created.json')) {
+  if (!dir || !exists(dir)) return log('No claude-on-a-diet backup found.'), process.exit(1);
+  const rmEmptyUp = (p) => { for (let d = path.dirname(p); d.startsWith(CLAUDE + path.sep); d = path.dirname(d)) { try { fs.rmdirSync(d); } catch { break; } } };
+  for (const rel of readJson(path.join(dir, '.created.json'), [])) {
+    log(`- ${rel}`);
+    if (!DRY) { fs.rmSync(path.join(CLAUDE, rel), { recursive: true, force: true }); rmEmptyUp(path.join(CLAUDE, rel)); }
+  }
+  // exact list when present; older backups: every file, one by one (never wipe a whole hooks/ or skills/ dir)
+  const leaves = (d, pre = '') => fs.readdirSync(path.join(d, pre), { withFileTypes: true }).flatMap((e) => {
+    const rel = pre ? `${pre}/${e.name}` : e.name;
+    return e.isDirectory() ? leaves(d, rel) : rel.startsWith('.') ? [] : [rel];
+  });
+  const list = exists(path.join(dir, '.backed-up.json')) ? readJson(path.join(dir, '.backed-up.json'), []) : leaves(dir);
+  for (const rel of list) {
     const dst = path.join(CLAUDE, rel);
     log(`< ${rel}`);
     if (DRY) continue;
