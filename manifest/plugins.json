@@ -1,0 +1,11 @@
+{
+  "marketplaces": [
+    {
+      "name": "claude-plugins-official",
+      "repo": "anthropics/claude-plugins-official"
+    }
+  ],
+  "plugins": [
+    "frontend-design@claude-plugins-official"
+  ]
+}

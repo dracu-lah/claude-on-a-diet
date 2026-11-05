@@ -1,0 +1,17 @@
+2|git push origin main
+2|git -C . push --help
+2|git -c foo=bar push
+2|cd x && git push
+2|npx --no-install wrangler deploy
+2|pnpm exec wrangler pages deploy dist
+2|wrangler versions deploy
+0|wrangler deploy --dry-run
+2|gh release create v1
+0|gh release list --limit 10
+2|gh workflow run build.yml
+0|git commit -m "push fix"
+0|git log --grep push
+2|git status && git push --dry-run
+0|wrangler dev
+2|echo gradlew help
+0|git tag --sort=-creatordate | head

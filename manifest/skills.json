@@ -1,0 +1,129 @@
+{
+  "skills": [
+    {
+      "name": "compose-performance",
+      "source": "chrisbanes/skills",
+      "default": true
+    },
+    {
+      "name": "wrangler",
+      "source": "cloudflare/skills",
+      "default": true
+    },
+    {
+      "name": "impeccable",
+      "source": "pbakaus/impeccable",
+      "default": true
+    },
+    {
+      "name": "no-ai-slop",
+      "source": "petergyang/no-ai-slop",
+      "default": true
+    },
+    {
+      "name": "web-design-guidelines",
+      "source": "vercel-labs/agent-skills",
+      "default": true
+    },
+    {
+      "name": "frontend-design",
+      "source": "anthropics/skills",
+      "default": false
+    },
+    {
+      "name": "pdf",
+      "source": "anthropics/skills",
+      "default": false
+    },
+    {
+      "name": "docx",
+      "source": "anthropics/skills",
+      "default": false
+    },
+    {
+      "name": "xlsx",
+      "source": "anthropics/skills",
+      "default": false
+    },
+    {
+      "name": "resume-tailor",
+      "source": "claude-office-skills/skills",
+      "default": false
+    },
+    {
+      "name": "durable-objects",
+      "source": "cloudflare/skills",
+      "default": false
+    },
+    {
+      "name": "copywriting",
+      "source": "coreyhaines31/marketingskills",
+      "default": false
+    },
+    {
+      "name": "cro",
+      "source": "coreyhaines31/marketingskills",
+      "default": false
+    },
+    {
+      "name": "schema",
+      "source": "coreyhaines31/marketingskills",
+      "default": false
+    },
+    {
+      "name": "seo-audit",
+      "source": "coreyhaines31/marketingskills",
+      "default": false
+    },
+    {
+      "name": "animation-vocabulary",
+      "source": "emilkowalski/skills",
+      "default": false
+    },
+    {
+      "name": "apple-design",
+      "source": "emilkowalski/skills",
+      "default": false
+    },
+    {
+      "name": "agent-tools",
+      "source": "infsh-skills/skills",
+      "default": false
+    },
+    {
+      "name": "redesign-existing-projects",
+      "source": "leonxlnx/taste-skill",
+      "default": false
+    },
+    {
+      "name": "design-taste-frontend",
+      "source": "leonxlnx/taste-skill",
+      "default": false
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "default": false
+    },
+    {
+      "name": "brainstorming",
+      "source": "obra/superpowers",
+      "default": false
+    },
+    {
+      "name": "shadcn",
+      "source": "shadcn/ui",
+      "default": false
+    },
+    {
+      "name": "vercel-react-best-practices",
+      "source": "vercel-labs/agent-skills",
+      "default": false
+    },
+    {
+      "name": "find-skills",
+      "source": "vercel-labs/skills",
+      "default": false
+    }
+  ]
+}
