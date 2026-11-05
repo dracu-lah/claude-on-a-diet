@@ -17,11 +17,22 @@ cd claude-on-a-diet
 claude
 ```
 
-Then type: **start configuring**
+Then send this prompt:
 
-Claude checks your machine, asks a few questions (what to install, which skills, which of my
-personal rules to drop), shows a dry run, backs up your current `~/.claude`, and installs.
+```text
+start configuring
+```
+
+Claude checks your machine and asks one round of questions: what to install, which skills,
+your name and git author (for the `{{PLACEHOLDERS}}`), which MCP servers stay on, and which of my
+personal rules to drop. It shows a dry run, backs up your current `~/.claude`, then installs.
 Restart Claude Code afterwards.
+
+Later, to pull in new rules and the newest skills:
+
+```text
+git pull, then start configuring again
+```
 
 ## What's inside
 
@@ -34,7 +45,8 @@ Restart Claude Code afterwards.
 | `config/skills/` | My own skills (`dsr`, `figma-reading`) |
 | `manifest/skills.json` | Third-party skills (`default: true` = my everyday set), installed with `npx skills` |
 | `manifest/plugins.json` | Plugin marketplaces and plugins |
-| `scripts/setup.mjs` | The installer (`status`, `install`, `update`, `restore`, `capture`, `check-private`) |
+| `manifest/mcp.json` | MCP servers that stay on; every other one found is turned off |
+| `scripts/setup.mjs` | The installer (`status`, `install`, `set`, `mcp-list`, `update`, `restore`, `capture`, `check-private`) |
 
 ## Without Claude
 
@@ -43,6 +55,9 @@ node scripts/setup.mjs status
 node scripts/setup.mjs install --all --dry-run   # see what it would do
 node scripts/setup.mjs install --all             # rules, hooks, settings, own skills, default skills, plugins
 node scripts/setup.mjs install --rules --skills=impeccable,wrangler
+node scripts/setup.mjs set DISPLAY_NAME="Your Name" GIT_AUTHOR=your-git-name   # fills {{PLACEHOLDERS}}
+node scripts/setup.mjs mcp-list                  # MCP servers found and whether they are on
+node scripts/setup.mjs install --mcp --mcp-keep="claude.ai Figma"   # everything else off
 node scripts/setup.mjs update                    # newest third-party skills and plugins
 node scripts/setup.mjs restore                   # undo: put back the latest backup
 ```

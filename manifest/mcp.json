@@ -1,0 +1,4 @@
+{
+  "_doc": "MCP servers that stay on. Every other server found on the machine (claude.ai connectors, plugin MCPs, built-ins like claude-in-chrome) gets a permissions.deny rule, which turns it off in every project.",
+  "keep": ["claude.ai Figma", "claude.ai Linear"]
+}

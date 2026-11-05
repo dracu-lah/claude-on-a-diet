@@ -7,6 +7,9 @@
 //   node scripts/setup.mjs capture          # copy this machine's ~/.claude back into the repo (owner)
 //   node scripts/setup.mjs restore [dir]    # put a backup back (latest if no dir)
 //   node scripts/setup.mjs check-private    # fail if repo files match .private-patterns
+//   node scripts/setup.mjs mcp-list         # MCP servers found here and whether they are on
+//   node scripts/setup.mjs install --mcp [--mcp-keep=a,b]  # keep listed servers, deny every other one
+//   node scripts/setup.mjs set KEY=value ... # save personal values for {{KEY}} placeholders (per machine)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,13 +27,36 @@ const HOME_FWD = fwd(HOME);
 const args = process.argv.slice(2);
 const cmd = args[0] || 'status';
 const flag = (n) => args.includes(`--${n}`) || args.includes('--all');
-const opt = (n, d) => (args.find((a) => a.startsWith(`--${n}=`)) || '').split('=')[1] || d;
+const opt = (n, d) => { const a = args.find((x) => x.startsWith(`--${n}=`)); return a === undefined ? d : a.slice(n.length + 3); };
 const DRY = args.includes('--dry-run');
 
 const log = (...m) => console.log(...m);
 const readJson = (p, d = {}) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return d; } };
 const writeJson = (p, o) => { if (DRY) return log(`[dry] write ${p}`); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(o, null, 2) + '\n'); };
 const exists = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
+
+// ---------- personal values: {{KEY}} placeholders in config/ text files ----------
+const PROFILE = path.join(CLAUDE, 'claude-on-a-diet.profile.json'); // per machine, never in the repo
+const profile = () => readJson(PROFILE);
+const PH = /\{\{([A-Z][A-Z0-9_]*)\}\}/g;
+const isText = (f) => /\.(md|txt|json|py|mjs|js|sh|ya?ml|toml)$/i.test(f);
+const fill = (s, vals, missing) => s.replace(PH, (m, k) => (k in vals ? vals[k] : (missing?.add(k), m)));
+const unfill = (s, vals) => Object.entries(vals).filter(([, v]) => v && v.length > 2)
+  .sort((a, b) => b[1].length - a[1].length).reduce((acc, [k, v]) => acc.split(v).join(`{{${k}}}`), s);
+function placeholders(dir = CFG, out = new Set()) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) placeholders(p, out); else if (isText(e.name)) for (const m of fs.readFileSync(p, 'utf8').matchAll(PH)) out.add(m[1]);
+  }
+  return out;
+}
+const hasPH = (p) => fs.statSync(p).isDirectory() ? placeholders(p).size > 0 : isText(p) && PH.test(fs.readFileSync(p, 'utf8')) && !(PH.lastIndex = 0);
+const MISSING = new Set();
+function copyFilled(src, dst) {
+  if (fs.statSync(src).isDirectory()) { fs.mkdirSync(dst, { recursive: true }); for (const f of fs.readdirSync(src)) copyFilled(path.join(src, f), path.join(dst, f)); }
+  else if (isText(src)) fs.writeFileSync(dst, fill(fs.readFileSync(src, 'utf8'), profile(), MISSING));
+  else fs.copyFileSync(src, dst);
+}
 
 function run(bin, argv, { quiet } = {}) {
   log(`$ ${bin} ${argv.join(' ')}`);
@@ -65,13 +91,15 @@ function backup(rel) {
 }
 
 // ---------- place a file or dir (copy, or symlink with --link) ----------
-function place(srcAbs, rel, { transform } = {}) {
+function place(srcAbs, rel) {
   const dst = path.join(CLAUDE, rel);
+  const transform = hasPH(srcAbs);
   backup(rel);
   if (DRY) return log(`[dry] ${flag('link') ? 'link' : 'copy'} ${rel}`);
   if (exists(dst) && fs.realpathSync(dst) === fs.realpathSync(srcAbs)) return log(`= ${rel} (already linked)`);
   fs.rmSync(dst, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(dst), { recursive: true });
+  if (flag('link') && transform) log(`  ${rel} has {{placeholders}}: copied with your values, not linked`);
   if (flag('link') && !transform) {
     try {
       const dir = fs.statSync(srcAbs).isDirectory();
@@ -79,8 +107,7 @@ function place(srcAbs, rel, { transform } = {}) {
       return log(`→ ${rel} (linked)`);
     } catch (e) { log(`! symlink failed for ${rel} (${e.code}); copying instead`); }
   }
-  if (transform) fs.writeFileSync(dst, transform(fs.readFileSync(srcAbs, 'utf8')));
-  else fs.cpSync(srcAbs, dst, { recursive: true });
+  copyFilled(srcAbs, dst);
   log(`+ ${rel}`);
 }
 
@@ -139,6 +166,40 @@ function installPlugins() {
   for (const p of m.plugins || []) run('claude', ['plugin', 'install', p]);
 }
 
+// ---------- MCP allowlist (deny rules turn a server off in every project) ----------
+const BUILTIN_MCP = ['claude-in-chrome', 'claude-artifacts'];
+const mcpRule = (n) => `mcp__${n.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+const isServerRule = (r) => r.startsWith('mcp__') && !r.slice(5).includes('__'); // whole server, not one tool
+function discoverMcp() {
+  const names = new Set(BUILTIN_MCP);
+  const r = spawnSync('claude', ['mcp', 'list'], { stdio: 'pipe', shell: WIN, timeout: 120000 });
+  for (const line of String(r.stdout || '').split('\n')) { const m = line.match(/^(\S[^:]*): .* - \S/); if (m) names.add(m[1].trim()); }
+  for (const n of readJson(path.join(HOME, '.claude.json')).claudeAiMcpEverConnected || []) names.add(n); // read only
+  return [...names];
+}
+function mcpKeep() {
+  const o = opt('mcp-keep', null);
+  return new Set(o !== null ? o.split(',').map((s) => s.trim()).filter(Boolean) : readJson(path.join(REPO, 'manifest', 'mcp.json')).keep || []);
+}
+function mcpList() {
+  const deny = new Set(readJson(path.join(CLAUDE, 'settings.json')).permissions?.deny || []);
+  const keep = mcpKeep();
+  log(JSON.stringify(discoverMcp().map((n) => ({ name: n, on: !deny.has(mcpRule(n)), inManifest: keep.has(n) })), null, 2));
+}
+function installMcp() {
+  if (!has('claude')) return log('! claude CLI not on PATH: MCP step skipped');
+  const keep = mcpKeep(), found = discoverMcp();
+  const file = path.join(CLAUDE, 'settings.json');
+  backup('settings.json');
+  const s = readJson(file);
+  s.permissions ??= {};
+  const keepRules = new Set([...keep].map(mcpRule));
+  const off = found.filter((n) => !keep.has(n));
+  s.permissions.deny = [...new Set([...(s.permissions.deny || []).filter((r) => !keepRules.has(r)), ...off.map(mcpRule)])];
+  writeJson(file, s);
+  log(`+ MCP on: ${[...keep].join(', ') || 'none'}\n+ MCP off: ${off.join(', ') || 'none'}`);
+}
+
 // ---------- commands ----------
 function install() {
   log(`Claude config dir: ${CLAUDE}${DRY ? '  (dry run)' : ''}`);
@@ -151,6 +212,8 @@ function install() {
   if (flag('own-skills')) for (const d of fs.readdirSync(path.join(CFG, 'skills'))) place(path.join(CFG, 'skills', d), path.join('skills', d));
   installSkills(selectedSkills());
   if (flag('plugins')) installPlugins();
+  if (flag('mcp')) installMcp(); // after plugins, so plugin MCPs are found
+  if (MISSING.size) log(`\n! No value for: ${[...MISSING].join(', ')}. Run: node scripts/setup.mjs set ${[...MISSING].map((k) => `${k}=...`).join(' ')}  then install again`);
   if (BACKUP && !DRY) { fs.mkdirSync(BACKUP, { recursive: true }); writeJson(path.join(BACKUP, '.created.json'), [...CREATED]); }
   log(BACKUP ? `\nDone. Undo with: node scripts/setup.mjs restore "${BACKUP}"` : '\nDone, nothing changed.');
 }
@@ -179,6 +242,8 @@ function status() {
       const p = path.join(CLAUDE, f); return [f, !exists(p) ? false : fs.lstatSync(p).isSymbolicLink() ? 'symlink' : true];
     })),
     ownSkills: fs.readdirSync(path.join(CFG, 'skills')),
+    placeholders: Object.fromEntries([...placeholders()].map((k) => [k, profile()[k] ?? null])),
+    gitDefaults: { name: String(spawnSync('git', ['config', 'user.name'], { stdio: 'pipe', shell: WIN }).stdout || '').trim() || null },
     thirdPartySkills: (readJson(path.join(REPO, 'manifest', 'skills.json')).skills || []).map((s) => `${s.name}${s.default ? '*' : ''} (${s.source})`),
     plugins: readJson(path.join(REPO, 'manifest', 'plugins.json')).plugins,
   }, null, 2));
@@ -191,7 +256,9 @@ function update() {
 
 const DROP_KEYS = ['autoMode', 'skipDangerousModePermissionPrompt']; // machine or company specific
 function capture() {
-  const cp = (from, to) => { if (!exists(from)) return; if (exists(to) && fs.realpathSync(from) === fs.realpathSync(to)) return; fs.mkdirSync(path.dirname(to), { recursive: true }); fs.rmSync(to, { recursive: true, force: true }); fs.cpSync(from, to, { recursive: true, dereference: true }); log(`< ${fwd(path.relative(REPO, to))}`); };
+  const vals = profile();
+  const unfillTree = (p) => { if (fs.statSync(p).isDirectory()) return fs.readdirSync(p).forEach((f) => unfillTree(path.join(p, f))); if (isText(p)) fs.writeFileSync(p, unfill(fs.readFileSync(p, 'utf8'), vals)); };
+  const cp = (from, to) => { if (!exists(from)) return; if (exists(to) && fs.realpathSync(from) === fs.realpathSync(to)) return; fs.mkdirSync(path.dirname(to), { recursive: true }); fs.rmSync(to, { recursive: true, force: true }); fs.cpSync(from, to, { recursive: true, dereference: true }); unfillTree(to); log(`< ${fwd(path.relative(REPO, to))}`); };
   cp(path.join(CLAUDE, 'CLAUDE.md'), path.join(CFG, 'CLAUDE.md'));
   cp(path.join(CLAUDE, 'models.md'), path.join(CFG, 'models.md'));
   for (const f of ['token_guard.py', 'token_guard_cases.txt']) cp(path.join(CLAUDE, 'hooks', f), path.join(CFG, 'hooks', f));
@@ -201,6 +268,7 @@ function capture() {
   const s = readJson(path.join(CLAUDE, 'settings.json'));
   for (const k of DROP_KEYS) delete s[k];
   if (s.permissions) delete s.permissions.allow; // per-machine approvals, often project paths
+  if (s.permissions?.deny) s.permissions.deny = s.permissions.deny.filter((r) => !isServerRule(r)); // rebuilt from manifest/mcp.json per machine
   let txt = JSON.stringify(s, null, 2).split(HOME_FWD).join('__HOME__').split(HOME.replaceAll('\\', '\\\\')).join('__HOME__');
   txt = txt.replace(/"(?:py -3|python3?) -I /g, '"__PYTHON__ -I ');
   fs.writeFileSync(path.join(CFG, 'settings.json'), txt + '\n');
@@ -226,18 +294,25 @@ function capture() {
 function checkPrivate() {
   const pf = path.join(REPO, '.private-patterns');
   const pats = exists(pf) ? fs.readFileSync(pf, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) : [];
-  pats.push(HOME_FWD); // always: your own home path
+  pats.push(HOME_FWD, ...Object.values(profile()).filter((v) => typeof v === 'string' && v.length > 2)); // your home path and personal values
   const TOKENS = /sk-ant-[\w-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{30,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY/;
   const hits = [];
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
     if (['.git', 'node_modules'].includes(e.name) || e.name === '.private-patterns') continue;
     const p = path.join(d, e.name);
     if (e.isDirectory()) walk(p);
-    else if (fs.statSync(p).size < 2e6) { const t = fs.readFileSync(p, 'utf8'); for (const pat of pats) if (t.toLowerCase().includes(pat.toLowerCase())) hits.push(`${fwd(path.relative(REPO, p))}: ${pat}`); if (TOKENS.test(t)) hits.push(`${fwd(path.relative(REPO, p))}: looks like a secret token`); }
+    else if (fs.statSync(p).size < 2e6) { const t = fs.readFileSync(p, 'utf8').replace(/github\.com\/[\w.-]+\/claude-on-a-diet/g, ''); /* the repo's own URL is fine */ for (const pat of pats) if (t.toLowerCase().includes(pat.toLowerCase())) hits.push(`${fwd(path.relative(REPO, p))}: ${pat}`); if (TOKENS.test(t)) hits.push(`${fwd(path.relative(REPO, p))}: looks like a secret token`); }
   } };
   walk(REPO);
   if (hits.length) { log('PRIVATE DATA FOUND, not safe to publish:\n  ' + hits.join('\n  ')); process.exit(1); }
   log('check-private: clean');
 }
 
-({ install, restore, status, update, capture, 'check-private': checkPrivate }[cmd] || (() => { log(`Unknown command: ${cmd}`); process.exit(2); }))();
+function set() {
+  const vals = profile();
+  for (const kv of args.slice(1)) { const i = kv.indexOf('='); if (i > 0) vals[kv.slice(0, i).toUpperCase()] = kv.slice(i + 1); }
+  writeJson(PROFILE, vals);
+  log(`Saved ${Object.keys(vals).join(', ')} to ${PROFILE}`);
+}
+
+({ install, restore, set, 'mcp-list': mcpList, status, update, capture, 'check-private': checkPrivate }[cmd] || (() => { log(`Unknown command: ${cmd}`); process.exit(2); }))();

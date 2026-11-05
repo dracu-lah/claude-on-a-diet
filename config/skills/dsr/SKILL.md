@@ -4,11 +4,11 @@ description: Use when the user says "create a dsr" or asks for the daily status 
 ---
 
 Build it from
-`git log --since=<last DSR> --author=dracu-lah --no-merges dev main HEAD` (the user pastes the last
+`git log --since=<last DSR> --author={{GIT_AUTHOR}} --no-merges dev main HEAD` (the user pastes the last
 DSR; skip what it lists; yesterday plus today so far). Fixed format:
 
 ```
-DD/MM/YYYY | Nevil
+DD/MM/YYYY | {{DISPLAY_NAME}}
 
 Project: <project name>
 - one line per task
