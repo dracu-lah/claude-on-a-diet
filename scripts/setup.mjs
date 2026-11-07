@@ -131,6 +131,19 @@ function stripGuardHooks(s) {
   if (!Object.keys(s.hooks).length) delete s.hooks;
   return s;
 }
+// merge() only adds array entries, so values the repo retired (config/settings.remove.json, same
+// shape as settings.json) are taken out of the user's file first.
+function removeRetired(cur, rm = readJson(path.join(CFG, 'settings.remove.json')), at = cur) {
+  for (const k of Object.keys(rm || {})) {
+    if (!at || !(k in at)) continue;
+    if (Array.isArray(rm[k]) && Array.isArray(at[k])) {
+      const drop = new Set(rm[k].map((x) => JSON.stringify(x)));
+      const kept = at[k].filter((x) => !drop.has(JSON.stringify(x)));
+      if (kept.length !== at[k].length) log(`- settings.json ${k}: removed ${at[k].length - kept.length} retired entries`);
+      at[k] = kept;
+    } else if (isObj(rm[k]) && isObj(at[k])) removeRetired(cur, rm[k], at[k]);
+  }
+}
 function installSettings(withHooks) {
   const py = pythonCmd();
   let repo = JSON.parse(fs.readFileSync(path.join(CFG, 'settings.json'), 'utf8')
@@ -140,6 +153,7 @@ function installSettings(withHooks) {
   const file = path.join(CLAUDE, 'settings.json');
   backup('settings.json');
   const cur = stripGuardHooks(readJson(file)); // drop old guard entries so a moved HOME does not duplicate them
+  removeRetired(cur);
   writeJson(file, merge(cur, repo));
   log('+ settings.json (merged; your other keys kept)');
   return !!py;

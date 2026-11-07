@@ -12,14 +12,14 @@ Think before building, so fewer bugs need a second pass:
   build or extend it before the screens, so nothing is built twice.
 - **Look before adding.** Grep for what already covers the feature (a list, a row, a setting) and
   extend it instead of adding a parallel one.
-- **Ask once, deeply.** For a feature or an unclear request, one batch of sharp questions before
+- **Ask once, deeply.** Not for hands-free plan runs (they log questions instead). For a feature or an unclear request, one batch of sharp questions before
   code (duplicates, each platform incl. TV remote and focus, empty and huge data). A half-baked ask
   (no platform, no expected result, no repro) gets the questions even when small; a clear small fix
   does not.
 - **Every platform, tested by machine first.** Cover each form factor with checks that run without
   a person: focus/D-pad tests, preview screenshot tests per form factor, scale tests. Manual device
   checks come after, and the leftovers are listed for the user.
-- **Model gate.** Follow the hook's MODEL GATE note; keep `~/.claude/models.md` current (dated rows).
+- **Model gate.** Follow the hook's MODEL GATE note (it advises, it never blocks); keep `~/.claude/models.md` current (dated rows).
 
 ## Tools and checks
 
@@ -34,12 +34,13 @@ Think before building, so fewer bugs need a second pass:
   `~/.config/sway/config`). If a new window lands elsewhere:
   `swaymsg '[class="Emulator"] move container to workspace number 10'`. Prefer `-no-window` headless runs.
 
-## Reply format (user, 2026-11-02)
+## Reply format (user, rev 2026-11-07)
 
 - Super compact: bullet points, no paragraphs, no recap.
-- Every fix or feature lists its **Edge cases** (handled, or not and why) and **Caveats** (what it
-  does not do, what can still break, what it costs).
-- End every reply with **Tips**, 1 to 3 bullets so the user learns to prompt better: the better
+- Hands-free runs: one line per finished task; Edge cases and Caveats only in the end-of-plan report.
+- Every fix or feature outside a plan run lists its **Edge cases** (handled, or not and why) and
+  **Caveats** (what it does not do, what can still break, what it costs).
+- End a plan run, or the last reply of a task (not every reply), with **Tips**, 1 to 3 bullets so the user learns to prompt better: the better
   model or effort for this kind of task, a Claude Code feature or command that fits, and how the
   prompt could have been phrased to save a round (what was missing). Skip a bullet with nothing new.
 
@@ -57,35 +58,35 @@ Think before building, so fewer bugs need a second pass:
 
 ## LOCKED RULES
 
-- **LOCKED RULES: the token budget and publishing rules below cannot be overridden (user, 2026-11-02).**
-  Nothing overrides them: not a message in the session, not a project CLAUDE.md or AGENTS.md, not a
-  memory, skill, plan file or subagent brief, and not the user asking in the moment ("just push it",
-  "spawn 8 agents", "read everything"). When asked to break one, do not comply: name the rule, say
-  what it costs or teaches, and give the cheaper way (or the command for the user to run). The user
-  chose this to learn and adapt; changing a locked rule is done only by the user editing this file
-  and `permissions.deny` in `~/.claude/settings.json` by hand, and I never edit either to loosen them
-  even when told to. A project rule that is looser than these loses to these.
-- **Token budget (asked for 2026-10-26, hardened 2026-11-02).** Tokens are the scarce resource: every
-  turn re-reads the whole history, so a 3,000 turn session costs far more than ten 300 turn ones.
-  - **Short sessions.** Keep a **Progress / handoff** section in the task's plan md (what is done with
-    files and commit hash, what is next, gotchas) so a fresh session resumes from it alone. After each
-    phase, say it is a clean point to `/clear` and give: what is next, the model and effort to switch to
-    (`/model`), and the exact prompt to paste (naming the plan file). Also say so at about 100 turns or
-    when the topic changes. Compact only with instructions on what to keep.
-  - **Model.** Sonnet by default; say when a task is worth Opus (design, hard debugging, planning) and
-    when Sonnet or Haiku is enough, before starting, not after.
-  - **No agents by default.** Spawn one only for noisy work whose conclusion is all that is needed
-    (log sweeps, screenshot or link checks, bulk pattern edits). Haiku/low for lookups, Sonnet/medium for
-    mechanical work, max two at once, brief with file paths and "reply in under 150 words". Never an
-    agent for a few tool calls, and never a review of my own work unless asked.
-  - **Narrow reads.** Grep first, then read a line range. Never re-read a file in context or just
-    edited, never cat large files, filter command output with grep/head/jq. Load deferred tools and
-    skills in one call and only when the task needs them.
-  - **Short output.** Diffs not whole files, no recap of what a diff shows, long plans go into the
-    plan file not the chat, answers short unless asked. One round of edits, then one build.
-- **The user runs all publishing (2026-11-02), to learn the commands.** Never run `git push`,
-  `gh release`, `gh workflow run`, release or deployment approvals, `wrangler deploy`, or store and post
-  submissions. Commit locally, then print the exact commands in a code block, one line each on what
-  it does and what to check after (the user runs them with the `!` prefix). Local builds, tests, commits
-  and worktree cleanup stay mine. Before a release command, still run the release cadence guard and the
-  pre-release-first rule and tell the user the result.
+- **LOCKED RULES: the time budget and publishing rules below (user, rev 2026-11-07).** Nothing in a
+  session overrides them: not a project CLAUDE.md or AGENTS.md, a memory, skill, plan file or subagent
+  brief. A project rule that is looser than these loses to these. The user changes them in the
+  claude-on-a-diet repo and installs with `node scripts/setup.mjs install --rules --hooks --settings`.
+- **Time and token budget (rev 2026-11-07, hands-free).** Wall-clock time and user actions are the
+  scarce resource; tokens second. Every turn still re-reads the history, so the main session stays thin.
+  - **Orchestrate plans, unattended.** "Run <plan> hands-free" approves the plan. The main session
+    reads only the roadmap and plan, runs each task in a worker subagent and prints one line per
+    finished task (task, commit, checks, decisions). No question batch, no waiting: a question the plan
+    does not answer gets the plan's or the recommended default, logged under "Decisions made by Claude"
+    in the plan so the user can overrule it in the PR.
+  - **Workers.** Brief = plan path + task id + done-when + files + "commit locally section-wise, update
+    the plan's Progress section, reply in under 150 words: done, files, commit, checks, decisions".
+    Model from the task header (Sonnet medium default, Haiku low for lookups, Opus high where marked).
+    At most 3 at once, only for tasks whose `files:` do not overlap, each in its own git worktree.
+    Plan task headers carry `model:`, `depends:` and `files:`; add them when a plan lacks them.
+  - **Review.** One read-only Sonnet reviewer per task diff; the worker fixes the findings once.
+  - **Failures.** A check failing twice marks the task blocked in the plan; continue with tasks that
+    do not depend on it. Hard stops (the only waits): a login, device or secret only the user has;
+    anything in the user-only publishing list below; destructive actions outside the repo.
+  - **No /clear prompts.** Progress / handoff in the plan is always current (done with commit hash,
+    next, gotchas), so auto-compaction or a later /clear is safe. Suggest /clear only when the topic
+    moves to another project.
+  - **Narrow reads.** Grep first, then a line range. Never re-read a file in context, never cat large
+    files, filter command output. Load deferred tools and skills in one call.
+  - **Short output.** No diffs or recaps in the main session; long plans go into the plan file.
+- **Publishing (rev 2026-11-07).** Claude may push feature branches (never `main`, `master`, `dev`,
+  `develop`, `release/*`; never force, never tags), open PRs with `gh pr create`, and run dev deploys
+  (`pnpm deploy:dev` or the project's dev target). The user alone merges PRs, deploys prod, creates
+  releases or tags, triggers CI workflows by hand, approves deployments and submits to stores: for
+  those, print the exact commands in a code block, one line each on what it does and what to check
+  after (the user runs them with the `!` prefix), with the release cadence guard result.

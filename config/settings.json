@@ -6,18 +6,21 @@
   },
   "permissions": {
     "deny": [
-      "Bash(git push:*)",
       "Bash(gh workflow run:*)",
       "Bash(wrangler deploy:*)",
       "Bash(wrangler pages deploy:*)",
       "Bash(npx wrangler deploy:*)",
       "Bash(npx wrangler pages deploy:*)",
-      "Agent",
-      "Workflow",
       "Bash(gh release create:*)",
       "Bash(gh release upload:*)",
       "Bash(gh release edit:*)",
-      "Bash(gh release delete:*)"
+      "Bash(gh release delete:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin dev:*)",
+      "Bash(pnpm deploy:prod:*)",
+      "Bash(gh pr merge:*)"
     ],
     "defaultMode": "auto"
   },

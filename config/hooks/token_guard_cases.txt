@@ -1,7 +1,7 @@
 2|git push origin main
 2|git -C . push --help
 2|git -c foo=bar push
-2|cd x && git push
+2|cd x && git push origin main
 2|npx --no-install wrangler deploy
 2|pnpm exec wrangler pages deploy dist
 2|wrangler versions deploy
@@ -11,7 +11,19 @@
 2|gh workflow run build.yml
 0|git commit -m "push fix"
 0|git log --grep push
-2|git status && git push --dry-run
+0|git status && git push --dry-run
 0|wrangler dev
 2|echo gradlew help
 0|git tag --sort=-creatordate | head
+0|git push -u origin perf/optimization
+0|git push origin feat/x:feat/x
+2|git push --force origin feat/x
+2|git push origin +feat/x
+2|git push origin feat/x:main
+2|git push origin v1.2.0
+2|git push --tags
+2|git -C ../other push origin feat/x
+2|pnpm deploy:prod
+0|pnpm deploy:dev
+2|gh pr merge 12
+0|gh pr create --fill

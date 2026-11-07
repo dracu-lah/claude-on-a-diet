@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "deny": [
+      "Agent",
+      "Workflow",
+      "Bash(git push:*)"
+    ]
+  }
+}

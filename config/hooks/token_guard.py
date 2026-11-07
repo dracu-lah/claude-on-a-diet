@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Token guard (user, 2026-11-02). Hard limits that need no cooperation from the model.
   read   : PreToolUse on Read, blocks a whole-file read of a big text file (no limit given).
-  bash   : PreToolUse on Bash, blocks a Gradle run whose full output would land in the history.
+  bash   : PreToolUse on Bash, blocks a Gradle run whose full output would land in the history, and
+           user-only publishing (prod deploy, main/dev push, force, tags, merge, release).
   prompt : UserPromptSubmit, warns on long sessions and blocks very long ones until /clear,
            and adds the model gate (current model and effort, routing from ~/.claude/models.md).
 Fails open: any error in here lets the action through."""
-import json, os, re, sys
+import shlex, subprocess, json, os, re, sys
 
 READ_MAX_BYTES = 30_000
-WARN_CALLS, BLOCK_CALLS = 150, 400
+WARN_CALLS, BLOCK_CALLS = 300, 1000
 CLAUDE_DIR = os.environ.get('CLAUDE_CONFIG_DIR') or os.path.expanduser('~/.claude')
 MODELS_MD = os.path.join(CLAUDE_DIR, 'models.md')
 SETTINGS = os.path.join(CLAUDE_DIR, 'settings.json')
@@ -22,9 +23,15 @@ GRADLE_OK = re.compile(r'\|\s*(tail|grep|head|rg|jq|wc|sed|awk)\b|(^|\s)(-q|--qu
 # Backs up permissions.deny, whose prefix match misses 'git -C x push', 'npx --yes wrangler deploy',
 # 'pnpm exec wrangler deploy'. Read-only forms (gh release list/view) stay allowed here.
 PUBLISH = re.compile(
-    r'\bgit(?:\s+(?:-[Cc]\s+\S+|--[\w-]+(?:=\S+)?))*\s+push\b'
+    r'(?P<push>\bgit(?:\s+(?:-[Cc]\s+\S+|--[\w-]+(?:=\S+)?))*\s+push\b)'
     r'|(?P<wr>\bwrangler\b(?:\s+(?!deploy\b|publish\b)[^\s;&|]+)*?\s+(?:pages\s+|versions\s+)?(?:deploy|publish)\b)'
-    r'|\bgh\s+release\s+(?:create|upload|edit|delete)\b|\bgh\s+workflow\s+run\b')
+    r'|\bgh\s+release\s+(?:create|upload|edit|delete)\b|\bgh\s+workflow\s+run\b'
+    r'|\bgh\s+pr\s+merge\b|\bdeploy:prod\b|\bopennextjs-cloudflare\s+deploy\b[^;&|]*--env[ =]prod\b')
+# Feature-branch pushes are Claude's (rev 2026-11-07); these stay the user's.
+PROTECTED = re.compile(r'^(main|master|dev|develop|prod|production|release/.+)$')
+TAGLIKE = re.compile(r'^(refs/tags/.+|v?\d+\.\d+.*)$')
+BAD_PUSH_FLAG = {'-f', '--force', '--force-with-lease', '--delete', '-d', '--mirror', '--tags', '--all',
+                 '--prune', '--follow-tags'}
 SKIP_EXT ={'.png', '.jpg', '.jpeg', '.webp', '.gif', '.pdf', '.ipynb', '.svg'}
 
 def main():
@@ -42,9 +49,12 @@ def main():
     elif mode == 'bash':
         cmd = (d.get('tool_input') or {}).get('command') or ''
         m = PUBLISH.search(cmd)
+        if m and m.group('push') and (' --dry-run' in cmd or push_ok(cmd[m.start():], d.get('cwd') or '.')):
+            m = None
         if m and not (m.group('wr') and '--dry-run' in cmd):
-            print(f"Blocked by publish guard (LOCKED rule): '{m.group(0).strip()}' publishes. The user runs "
-                  "all publishing: commit locally and print the exact command for them to run with '!'.",
+            print(f"Blocked by publish guard (LOCKED rule): '{m.group(0).strip()}' is publishing the user "
+                  "keeps (prod deploy, main/dev push, force, tag, merge, release, workflow run). Push the "
+                  "feature branch instead, and print the exact command for them to run with '!'.",
                   file=sys.stderr)
             return 2
         if GRADLE.search(cmd) and not GRADLE_OK.search(cmd):
@@ -80,13 +90,13 @@ def main():
                         set_effort = m.group(1)
         if n >= BLOCK_CALLS:
             print(f"Blocked by token guard: this session has {n} model calls, each one re-reads the whole "
-                  f"history. Finish the phase, update the plan's Progress section, run /clear and paste "
-                  f"the resume prompt.", file=sys.stderr)
+                  f"history. Update the plan's Progress section and move the remaining "
+                  f"tasks to worker subagents (or the user runs /clear and the resume prompt).", file=sys.stderr)
             return 2
         ctx = []
         if n >= WARN_CALLS:
             ctx.append(f"TOKEN GUARD: session is at {n} model calls (blocks at {BLOCK_CALLS}). "
-                "Tell the user to wrap up this phase, update the plan Progress section and /clear.")
+                "Keep the plan Progress section current and run the remaining work in worker subagents.")
         try:
             ctx.append(model_gate(d, n, last_req, switched, set_effort))
         except Exception:
@@ -95,6 +105,34 @@ def main():
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                 "additionalContext": "\n\n".join(ctx)}}))
     return 0
+
+def push_ok(cmd, cwd):
+    """True for a plain push of feature branches; anything unclear stays blocked."""
+    seg = re.split(r'\s*(?:&&|\|\||;|\|)\s*', cmd)[0]
+    if re.search(r'\bgit\s+(?:\S+\s+)*?-[Cc]\s', seg):
+        return False  # another repo: its branch cannot be resolved safely here
+    try:
+        toks = shlex.split(seg[seg.index(' push') + 5:])
+    except (ValueError, IndexError):
+        return False
+    if any(t.split('=')[0] in BAD_PUSH_FLAG for t in toks):
+        return False
+    args = [t for t in toks if not t.startswith('-')]
+    refs = args[1:]
+    if not refs or refs == ['HEAD']:
+        try:
+            refs = [subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'],
+                                   capture_output=True, text=True, timeout=5).stdout.strip()]
+        except Exception:
+            return False
+    for r in refs:
+        if not r or r == 'HEAD' or r.startswith('+'):
+            return False
+        dst = r.split(':')[-1]
+        dst = dst[len('refs/heads/'):] if dst.startswith('refs/heads/') else dst
+        if PROTECTED.match(dst) or TAGLIKE.match(dst):
+            return False
+    return True
 
 def command_stdout(line):
     """Text of a real slash-command output entry, '' for anything else (summaries, tool results
@@ -166,13 +204,12 @@ def model_gate(d, n, last_req, switched, set_effort):
     if n == 0 or switched:
         sec = md.split('## Routing', 1)[1].split('\n## ', 1)[0].strip() if '## Routing' in md else ''
         out.append("Before any tool call, pick the right model and effort for this task from the "
-                   "routing below. If it does not match, do not start the work: reply only with a short "
-                   "model check (what the task is, the right model and effort, why in a few words), the "
-                   "commands `/model <alias>` and if needed `/effort <level>`, then 'press Up and Enter to "
-                   "resend the prompt; add --stay to run it here anyway'. If it matches, just start.\n\n" + sec)
+                   "routing below. If it does not match, say in one line which model and effort fit better "
+                   "(`/model <alias>`, `/effort <level>` for next time) and start the work anyway; never "
+                   "stop. In a hands-free plan run, pick the model per task for the worker subagents.\n\n" + sec)
     else:
         out.append("Mid-session: only when this prompt starts a new task of another tier (routing in "
-                   "~/.claude/models.md), name the right model in one line and suggest it for after /clear; "
+                   "~/.claude/models.md), name the right model in one line (or use it for a worker subagent); "
                    "do not stop mid-task, a switch re-reads the whole history uncached.")
     return "\n".join(out)
 

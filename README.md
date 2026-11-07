@@ -38,10 +38,11 @@ git pull, then start configuring again
 
 | Path | What |
 | --- | --- |
-| `config/CLAUDE.md` | Global rules: working method, reply format, locked token budget and publishing rules |
+| `config/CLAUDE.md` | Global rules: working method, reply format, hands-free plan runs (orchestrator + worker subagents), publishing split (feature-branch push, PR and dev deploy are Claude's; prod, merge, release are yours) |
 | `config/models.md` | Which model and effort for which task (read by the model gate) |
-| `config/hooks/token_guard.py` | Hook: blocks wasteful reads/commands, adds the model gate to each prompt |
+| `config/hooks/token_guard.py` | Hook: blocks wasteful reads/commands and user-only publishing (prod, main/dev push, force, tags, merge), adds an advisory model gate to each prompt |
 | `config/settings.json` | Settings (merged into yours, never replaces them) |
+| `config/settings.remove.json` | Retired values the installer takes out of yours first (merge alone only adds) |
 | `config/skills/` | My own skills (`dsr`, `figma-reading`) |
 | `manifest/skills.json` | Third-party skills (`default: true` = my everyday set), installed with `npx skills` |
 | `manifest/plugins.json` | Plugin marketplaces and plugins |

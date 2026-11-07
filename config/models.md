@@ -19,8 +19,8 @@ date the line.
 | Opus in plan mode, else Sonnet (the name `/model opusplan` shows, added 2026-11-04) | same as the `opusplan` row: Opus plans, Sonnet builds | as set (high in plan mode, medium after) |
 | claude-fable-5-1 | not profiled yet: the gate never picks it until a row is added here | |
 
-Gate rules: stop when the model is wrong, or the effort is 2 or more levels off (low, medium,
-high, xhigh, max). One level off: work, and say it in one line. `opusplan` passes for both planning
+Gate rules (rev 2026-11-07): never stop. When the model or effort is off, name the better one in
+one line and start the work. Hands-free plan runs pick the model per task in worker subagents. `opusplan` passes for both planning
 and building. Mid-task, never stop: a switch makes the whole history re-read without the prompt
 cache, so recommend it for after the next `/clear` instead. Right after `/compact` counts as a
 fresh session (the cache is cold anyway), so the full check runs again (2026-11-02).
