@@ -26,7 +26,10 @@ PUBLISH = re.compile(
     r'(?P<push>\bgit(?:\s+(?:-[Cc]\s+\S+|--[\w-]+(?:=\S+)?))*\s+push\b)'
     r'|(?P<wr>\bwrangler\b(?:\s+(?!deploy\b|publish\b)[^\s;&|]+)*?\s+(?:pages\s+|versions\s+)?(?:deploy|publish)\b)'
     r'|\bgh\s+release\s+(?:create|upload|edit|delete)\b|\bgh\s+workflow\s+run\b'
-    r'|\bgh\s+pr\s+merge\b|\bdeploy:prod\b|\bopennextjs-cloudflare\s+deploy\b[^;&|]*--env[ =]prod\b')
+    r'|\bgh\s+pr\s+merge\b'
+    r'|(?P<dep>\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?deploy(?::[\w-]+)?(?![\w:-])|\bopennextjs-cloudflare\s+deploy\b[^;&|]*)')
+DEV_TARGET = r'(?:dev|development|staging|preview)'
+DEV_DEPLOY = re.compile(r'deploy:' + DEV_TARGET + r'$|--env[ =]' + DEV_TARGET + r'\b')
 # Feature-branch pushes are Claude's (rev 2026-11-07); these stay the user's.
 PROTECTED = re.compile(r'^(main|master|dev|develop|prod|production|release/.+)$')
 TAGLIKE = re.compile(r'^(refs/tags/.+|v?\d+\.\d+.*)$')
@@ -48,10 +51,19 @@ def main():
             return 2
     elif mode == 'bash':
         cmd = (d.get('tool_input') or {}).get('command') or ''
-        m = PUBLISH.search(cmd)
-        if m and m.group('push') and (' --dry-run' in cmd or push_ok(cmd[m.start():], d.get('cwd') or '.')):
-            m = None
-        if m and not (m.group('wr') and '--dry-run' in cmd):
+        m = None
+        for hit in PUBLISH.finditer(cmd):  # every publish command in the line, not just the first
+            seg = re.split(r'\s*(?:&&|\|\||;|\|)\s*', cmd[hit.start():])[0]
+            dry = re.search(r'(^|\s)--dry-run(\s|$)', seg)
+            if hit.group('push') and (dry or push_ok(cmd[hit.start():], d.get('cwd') or '.', cmd[:hit.start()])):
+                continue
+            if hit.group('dep') and DEV_DEPLOY.search(hit.group('dep').strip()) and 'prod' not in hit.group('dep'):
+                continue
+            if hit.group('wr') and dry:
+                continue
+            m = hit
+            break
+        if m:
             print(f"Blocked by publish guard (LOCKED rule): '{m.group(0).strip()}' is publishing the user "
                   "keeps (prod deploy, main/dev push, force, tag, merge, release, workflow run). Push the "
                   "feature branch instead, and print the exact command for them to run with '!'.",
@@ -106,7 +118,7 @@ def main():
                 "additionalContext": "\n\n".join(ctx)}}))
     return 0
 
-def push_ok(cmd, cwd):
+def push_ok(cmd, cwd, before=''):
     """True for a plain push of feature branches; anything unclear stays blocked."""
     seg = re.split(r'\s*(?:&&|\|\||;|\|)\s*', cmd)[0]
     if re.search(r'\bgit\s+(?:\S+\s+)*?-[Cc]\s', seg):
@@ -120,8 +132,17 @@ def push_ok(cmd, cwd):
     args = [t for t in toks if not t.startswith('-')]
     refs = args[1:]
     if not refs or refs == ['HEAD']:
+        if re.search(r'(^|[\s;&|(])(cd|pushd)\s', before):
+            return False  # the hook's cwd is not where this push runs
         try:
-            refs = [subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            pd = subprocess.run(['git', '-C', cwd, 'config', '--get', 'push.default'],
+                                capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:
+            return False
+        if pd == 'matching':
+            return False  # would push main/dev too
+        try:
+            refs = [subprocess.run(['git', '-C', cwd, 'symbolic-ref', '--short', '-q', 'HEAD'],
                                    capture_output=True, text=True, timeout=5).stdout.strip()]
         except Exception:
             return False

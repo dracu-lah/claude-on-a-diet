@@ -27,3 +27,21 @@
 0|pnpm deploy:dev
 2|gh pr merge 12
 0|gh pr create --fill
+2|pnpm deploy:production
+2|pnpm deploy
+2|npm run deploy
+2|pnpm build:prod && pnpm deploy:prod
+0|pnpm run deploy:dev
+0|pnpm deploy:staging
+0|pnpm build:dev && pnpm deploy:dev
+2|opennextjs-cloudflare deploy --env prod
+2|opennextjs-cloudflare deploy
+0|opennextjs-cloudflare deploy --env dev
+2|cd ../x && git push
+2|git push
+0|cd ../x && git push origin feat/x
+2|pnpm deploy:dev && pnpm deploy:prod
+2|git push --dry-run && git push origin main
+2|git push origin feat/x && git push origin main
+0|git push origin feat/x && pnpm deploy:dev
+2|wrangler deploy --dry-run && wrangler deploy

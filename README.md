@@ -47,6 +47,7 @@ git pull, then start configuring again
 | `manifest/skills.json` | Third-party skills (`default: true` = my everyday set), installed with `npx skills` |
 | `manifest/plugins.json` | Plugin marketplaces and plugins |
 | `manifest/mcp.json` | MCP servers that stay on; every other one found is turned off |
+| `scripts/test-guard.py` | Runs the hook cases (`python3 scripts/test-guard.py`); run it after any hook edit |
 | `scripts/setup.mjs` | The installer (`status`, `install`, `set`, `mcp-list`, `update`, `restore`, `capture`, `check-private`) |
 
 ## Without Claude
