@@ -3,7 +3,9 @@
     "deny": [
       "Agent",
       "Workflow",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin dev:*)"
     ]
   }
 }

@@ -17,10 +17,12 @@
       "Bash(gh release delete:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
-      "Bash(git push origin main:*)",
-      "Bash(git push origin dev:*)",
       "Bash(pnpm deploy:prod:*)",
-      "Bash(gh pr merge:*)"
+      "Bash(gh pr merge:*)",
+      "Bash(git push origin main)",
+      "Bash(git push -u origin main)",
+      "Bash(git push origin dev)",
+      "Bash(git push -u origin dev)"
     ],
     "defaultMode": "auto"
   },
